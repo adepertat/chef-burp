@@ -18,9 +18,12 @@ end
 
 # CLIENT CONFIGURATIONS
 # =====================
-client_query = "role:#{node[:burp][:role][:client]}"
+# Iterate over all nodes with a burp password (node[:burp][:client][:password])
+# and create their client configuration in the burp clientconfdir.
+client_query = "burp_client_password:*"
+
 results = search(:node, "#{client_query} AND chef_environment:#{node.chef_environment}")
-passwords = results.map { |n|
+clients = results.map { |n|
 	[ 
 		n[:fqdn],
 		n[:burp].fetch(:client, {}).fetch(:password, ''),
@@ -28,14 +31,24 @@ passwords = results.map { |n|
 	]
 }
 
-passwords.each do |fqdn, password, clientconf|
-	template "#{node[:burp][:server][:config_dir]}/clientconfdir/#{fqdn}" do
-		source 'clientconf.erb'
-		variables({
-			:password => password,
-			:include => node[:burp][:default][:clientconf].fetch(:include, []) + clientconf.fetch(:include, []),
-			:timer => node[:burp][:default][:clientconf].fetch(:timer, []) + clientconf.fetch(:timer, [])
-		})
+default_includes = node[:burp][:default][:clientconf].fetch(:include, [])
+default_timer = node[:burp][:default][:clientconf].fetch(:timer, [])
+clients.each do |fqdn, password, clientconf|
+	if fqdn
+		includes = default_includes
+		timer = default_timer
+		if clientconf
+			includes += clientconf[:include]
+			timer += clientconf[:timer]
+		end
+		template "#{node[:burp][:server][:config_dir]}/clientconfdir/#{fqdn}" do
+			source 'clientconf.erb'
+			variables({
+				:password => password,
+				:include => includes,
+				:timer => timer,
+			})
+		end
 	end
 end
 
